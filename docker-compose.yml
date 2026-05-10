@@ -50,8 +50,8 @@ services:
               source: ${DIRECTORY_PATH}/webserver/conf
               target: '${HTTPD_PREFIX}/conf'
             - type: bind
-              source: ${DIRECTORY_PATH}/webserver/ssl-option/options-ssl-apache.conf
-              target: '${LETSENCRYPT_CONF_PREFIX}/options-ssl-apache.conf'
+              source: ${DIRECTORY_PATH}/webserver/ssl-option/options-ssl-apache-webserver.conf
+              target: '${LETSENCRYPT_CONF_PREFIX}/options-ssl-apache-webserver.conf'
             - type: bind
               source: ${DIRECTORY_PATH}/ssl-conf.sh
               target: '/tmp/ssl-conf.sh'
