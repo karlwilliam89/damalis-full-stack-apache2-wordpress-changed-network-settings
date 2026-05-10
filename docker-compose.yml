@@ -7,22 +7,19 @@ services:
         image: wordpress:${PHP_IMAGE_NAME}
         container_name: wordpress
         networks:
-            - backend
+            - wordpress-network
         volumes:
             - 'html:${WEBSERVER_DOC_ROOT}'
             - type: bind
-              source: ./php-fpm/php/conf.d/security.ini
+              source: ${DIRECTORY_PATH}/php-fpm/php/conf.d/security.ini
               target: '${PHP_INI_DIR_PREFIX}/php/conf.d/security.ini'
             - type: bind
-              source: ./php-fpm/php-fpm.d/z-www.conf
+              source: ${DIRECTORY_PATH}/php-fpm/php-fpm.d/z-www.conf
               target: '${PHP_INI_DIR_PREFIX}/php-fpm.d/z-www.conf'
         hostname: wordpress
         restart: unless-stopped
-        ports:
-            - '9000:80'
-        links:
-            - database
-            - redis
+#        ports:
+#            - '9000:80'
         healthcheck:
             test: ["CMD-SHELL", "/bin/pidof php-fpm > /dev/null || exit 1"]
             interval: 5s
@@ -38,7 +35,7 @@ services:
             TZ: '${LOCAL_TIMEZONE}'
         labels:
             - 'docker-volume-backup.stop-during-backup=true'
-        command: bash -c "curl -sSL https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions -o - | sh -s redis && TMP=$$(mktemp) && grep -vF 'date.timezone' ${PHP_INI_DIR_PREFIX}/php/conf.d/security.ini > $$TMP && echo 'date.timezone = ${LOCAL_TIMEZONE}' >> $$TMP && cp $$TMP ${PHP_INI_DIR_PREFIX}/php/conf.d/security.ini; docker-entrypoint.sh 'php-fpm'"
+        command: bash -c "curl -sSL https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions -o - | sh -s redis && grep -qxF 'date.timezone = ${LOCAL_TIMEZONE}' ${PHP_INI_DIR_PREFIX}/php/conf.d/security.ini || echo 'date.timezone = ${LOCAL_TIMEZONE}' >> ${PHP_INI_DIR_PREFIX}/php/conf.d/security.ini; docker-entrypoint.sh 'php-fpm'"
 
     webserver:
         depends_on:
@@ -46,18 +43,17 @@ services:
         image: httpd:latest
         container_name: webserver
         networks:
-            - backend
-            - frontend
+            - wordpress-network
         volumes:
             - 'html:${WEBSERVER_DOC_ROOT}'
             - type: bind
-              source: ./webserver/conf
+              source: ${DIRECTORY_PATH}/webserver
               target: '${HTTPD_PREFIX}/conf'
             - type: bind
-              source: ./webserver/ssl-option/options-ssl-apache-webserver.conf
-              target: '${LETSENCRYPT_CONF_PREFIX}/options-ssl-apache-webserver.conf'
+              source: ${DIRECTORY_PATH}/webserver/ssl-option/options-ssl-apache.conf
+              target: '${LETSENCRYPT_CONF_PREFIX}/options-ssl-apache.conf'
             - type: bind
-              source: ./ssl-conf.sh
+              source: ${DIRECTORY_PATH}/ssl-conf.sh
               target: '/tmp/ssl-conf.sh'
             - 'certbot-etc:${LETSENCRYPT_CONF_PREFIX}'
             - '/tmp/acme-challenge:/tmp/acme-challenge'
@@ -66,26 +62,18 @@ services:
         ports:
             - '80:80'
             - '443:443'
-            - '90:90'
-        links:
-            - wordpress
-        healthcheck:
-            test: ["CMD-SHELL", "/bin/pidof httpd > /dev/null || exit 1"]
-            interval: 10s
-            timeout: 5s
-            retries: 20
+#            - '90:90'
         environment:
             TZ: '${LOCAL_TIMEZONE}'
         command: bash -c "sh /tmp/ssl-conf.sh '${DOMAIN_NAME}' '${LETSENCRYPT_CONF_PREFIX}' '${HTTPD_PREFIX}/conf'"
 
     certbot:
         depends_on:
-            webserver:
-                condition: service_healthy
+            - webserver
         image: certbot/certbot:latest
         container_name: certbot
         networks:
-            - backend
+            - wordpress-network
         volumes:
             - 'certbot-etc:${LETSENCRYPT_CONF_PREFIX}'
             - 'certbot-var:/var/lib/letsencrypt'
@@ -107,34 +95,28 @@ services:
         image: phpmyadmin:latest
         container_name: phpmyadmin
         networks:
-            - backend
-            - frontend
+            - wordpress-network
         volumes:
             - type: bind
-              source: ./phpmyadmin/apache2/sites-available/default-ssl.sample.conf
-              target: '${APACHE_CONFDIR_PREFIX}/sites-available/default-ssl.sample.conf'
+              source: ${DIRECTORY_PATH}/phpmyadmin/apache2/sites-available/default-ssl.conf
+              target: '${APACHE_CONFDIR_PREFIX}/sites-available/default-ssl.conf'
             - type: bind
-              source: ./phpmyadmin/apache2/ports.conf
+              source: ${DIRECTORY_PATH}/phpmyadmin/apache2/ports.conf
               target: '${APACHE_CONFDIR_PREFIX}/ports.conf'
             - type: bind
-              source: ./phpmyadmin/ssl-option/options-ssl-apache-phpmyadmin.conf
-              target: '${LETSENCRYPT_CONF_PREFIX}/options-ssl-apache-phpmyadmin.conf'
+              source: ${DIRECTORY_PATH}/phpmyadmin/ssl-option/options-ssl-apache.conf
+              target: '${LETSENCRYPT_CONF_PREFIX}/options-ssl-apache.conf'
             - type: bind
-              source: ./phpmyadmin/config.user.inc.php
+              source: ${DIRECTORY_PATH}/phpmyadmin/config.user.inc.php
               target: '${PMA_CONF_FOLDER}/config.user.inc.php'
             - type: bind
-              source: ./phpmyadmin/php/conf.d/security.ini
+              source: ${DIRECTORY_PATH}/phpmyadmin/php/conf.d/security.ini
               target: '${PHP_INI_DIR_PREFIX}/php/conf.d/security.ini'
-            - type: bind
-              source: ./packagecheck.sh
-              target: '/tmp/packagecheck.sh'
             - 'certbot-etc:${LETSENCRYPT_CONF_PREFIX}'
         hostname: phpmyadmin
         restart: unless-stopped
         ports:
             - '9090:443'
-        links:
-            - database
         environment:
             PMA_HOST: 'database'
             PMA_PMADB: 'phpmyadmin'
@@ -145,30 +127,28 @@ services:
             MEMORY_LIMIT: '${PMA_MEMORY_LIMIT}'
             TZ: '${LOCAL_TIMEZONE}'
         command: >
-            bash -c "apt-get update && sh /tmp/packagecheck.sh 'gettext-base' && echo ${PMA_HTPASSWD_USERNAME}:phpmyadmin:$$( printf \"%s:%s:%s\" \"${PMA_HTPASSWD_USERNAME}\" \"phpmyadmin\" \"${PMA_HTPASSWD_PASSWORD}\" | md5sum | awk '{print $$1}' ) > ${PMA_CONF_FOLDER}/.htpasswd 
+            bash -c "echo ${PMA_HTPASSWD_USERNAME}:phpmyadmin:$$( printf \"%s:%s:%s\" \"${PMA_HTPASSWD_USERNAME}\" \"phpmyadmin\" \"${PMA_HTPASSWD_PASSWORD}\" | md5sum | awk '{print $$1}' ) > ${PMA_CONF_FOLDER}/.htpasswd 
             && printf 'AuthType Digest\\nAuthName \"phpmyadmin\"\\nAuthDigestProvider file\\nAuthUserFile ${PMA_CONF_FOLDER}/.htpasswd\\nRequire valid-user\\n' > /var/www/html/.htaccess && a2enmod auth_digest; 
             mkdir -p /var/www/html/../upload && chown www-data:www-data /var/www/html/../upload && chmod a+w /var/www/html/../upload; mkdir -p /var/www/html/../save && chown www-data:www-data /var/www/html/../save && chmod a+w /var/www/html/../save; 
-            grep -qxF 'ServerName 127.0.0.1' ${APACHE_CONFDIR_PREFIX}/apache2.conf || echo -e '\\nServerName 127.0.0.1' >> ${APACHE_CONFDIR_PREFIX}/apache2.conf; TMP=$$(mktemp) && grep -vF 'date.timezone' ${PHP_INI_DIR_PREFIX}/php/conf.d/security.ini > $$TMP && echo 'date.timezone = ${LOCAL_TIMEZONE}' >> $$TMP && cp $$TMP ${PHP_INI_DIR_PREFIX}/php/conf.d/security.ini; 
-            export DOMAIN_NAME=${DOMAIN_NAME} && envsubst '$$DOMAIN_NAME' < ${APACHE_CONFDIR_PREFIX}/sites-available/default-ssl.sample.conf > ${APACHE_CONFDIR_PREFIX}/sites-available/default-ssl.conf && a2enmod ssl && a2ensite default-ssl && a2dissite 000-default && /docker-entrypoint.sh 'apache2-foreground'"
+            grep -qxF 'ServerName 127.0.0.1' ${APACHE_CONFDIR_PREFIX}/apache2.conf || echo -e '\\nServerName 127.0.0.1' >> ${APACHE_CONFDIR_PREFIX}/apache2.conf; grep -qxF 'date.timezone = ${LOCAL_TIMEZONE}' ${PHP_INI_DIR_PREFIX}/php/conf.d/security.ini || echo 'date.timezone = ${LOCAL_TIMEZONE}' >> ${PHP_INI_DIR_PREFIX}/php/conf.d/security.ini; 
+            a2enmod ssl && a2ensite default-ssl && a2dissite 000-default && /docker-entrypoint.sh 'apache2-foreground'"
 
     database:
         image: ${DATABASE_IMAGE_NAME}:${DATABASE_VERSION}
         container_name: database
         networks:
-            - backend
+            - wordpress-network
         volumes:
             - 'db:/var/lib/mysql'
             - 'db-backup-data:/tmp/backup'
             - type: bind
-              source: ./database/conf.d/z-${DATABASE_IMAGE_NAME}.cnf
-              target: '${MYSQL_CONF_PREFIX}/z-${DATABASE_IMAGE_NAME}.cnf'
+              source: ${DIRECTORY_PATH}/database/conf.d/z-mysql.cnf
+              target: '${MYSQL_CONF_PREFIX}/z-mysql.cnf'
             - 'phpmyadmin-sql:/docker-entrypoint-initdb.d'
         hostname: database
         restart: unless-stopped
-        ports:
-            - '3306:3306'
-        privileged: true
-        cgroup: host
+#        ports:
+#            - '3306:3306'
         healthcheck:
             test: ["CMD-SHELL", "${DATABASE_ADMIN_COMMANDLINE} ping --silent || exit 1"]
             interval: 5s
@@ -186,24 +166,24 @@ services:
             - "docker-volume-backup.stop-during-backup=true"
             - "docker-volume-backup.archive-pre=/bin/sh -c 'mysqldump -uroot -p${MYSQL_ROOT_PASSWORD} --all-databases > /tmp/backup/db_backup_data.sql'"
             - "docker-volume-backup.exec-label=database"
-        command: bash -c "${DATABASE_PACKAGE_MANAGER} && chmod 0444 ${MYSQL_CONF_PREFIX}/z-${DATABASE_IMAGE_NAME}.cnf && export PMA_CONTROLUSER=${PMA_CONTROLUSER} export PMA_CONTROLPASS=${PMA_CONTROLPASS} && envsubst '$$PMA_CONTROLUSER,$$PMA_CONTROLPASS' < /docker-entrypoint-initdb.d/create_tables.sql.template > /docker-entrypoint-initdb.d/create_tables.sql && docker-entrypoint.sh --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci"
+        command: bash -c "${DATABASE_PACKAGE_MANAGER} && chmod 0444 ${MYSQL_CONF_PREFIX}/z-mysql.cnf && export PMA_CONTROLUSER=${PMA_CONTROLUSER} export PMA_CONTROLPASS=${PMA_CONTROLPASS} && envsubst '$$PMA_CONTROLUSER,$$PMA_CONTROLPASS' < /docker-entrypoint-initdb.d/create_tables.sql.template > /docker-entrypoint-initdb.d/create_tables.sql && docker-entrypoint.sh --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci"
 
     redis:
         image: redis:latest
         container_name: redis
         networks:
-            - backend
+            - wordpress-network
         volumes:
             - 'dtredis:/data'
             - type: bind
-              source: ./redis
+              source: ${DIRECTORY_PATH}/redis
               target: '${REDIS_CONF_PREFIX}/redis'
         hostname: redis
         sysctls:
             - net.core.somaxconn=512
         restart: unless-stopped
-        ports:
-            - '6379:6379'
+#        ports:
+#            - '6379:6379'
         environment:
             ALLOW_EMPTY_PASSWORD: 'yes'
             TZ: '${LOCAL_TIMEZONE}'
@@ -216,17 +196,17 @@ services:
         image: varnish:${VARNISH_VERSION}
         container_name: varnish
         networks:
-            - backend
+            - wordpress-network
         volumes:
             - type: bind
-              source: ./varnish/default.vcl
+              source: ${DIRECTORY_PATH}/varnish/default.vcl
               target: '${VARNISH_CONF_PREFIX}/default.vcl'
         hostname: varnish
         tmpfs:
             - /var/lib/varnish:exec
         restart: unless-stopped
-        ports:
-            - '8080:80'
+#        ports:
+#            - '8080:80'
         environment:
             VARNISH_SIZE: '${VARNISH_SIZE}'
             TZ: '${LOCAL_TIMEZONE}'
@@ -267,14 +247,14 @@ services:
         image: offen/docker-volume-backup:latest
         container_name: backup
         networks:
-            - backend
+            - wordpress-network
         volumes:
             - 'html:/backup/html:ro'
             - 'db:/backup/db:ro'
             - 'db-backup-data:/backup/db-backup-data:ro'
             - '/var/run/docker.sock:/var/run/docker.sock:ro'
             - type: bind
-              source: ./backups
+              source: ${DIRECTORY_PATH}/backups
               target: /archive
         hostname: backup
         restart: unless-stopped
@@ -286,8 +266,17 @@ services:
             BACKUP_EXCLUDE_REGEXP: 'wp-admin|wp-includes|\\.log$$'
 
 networks:
-    backend: null
-    frontend: null
+    wordpress-network:
+        driver: bridge
+        enable_ipv6: true
+#        driver_opts:
+#            com.docker.network.enable_ipv4: "false" # (not tested without IPv4)
+#        ipam: # (optional)
+#            config:
+#                - subnet: 2001:DB8:0:0::/80
+#                  gateway: 2001:DB8:0:0::1
+#                - subnet: 100.100.0.0/24
+#                  gateway: 100.100.0.1
 
 volumes:
     html:
