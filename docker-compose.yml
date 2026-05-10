@@ -5,7 +5,7 @@ services:
             database:
                 condition: service_healthy
         image: wordpress:${PHP_IMAGE_NAME}
-        container_name: wordpress
+        container_name: wordpress-wordpress
         networks:
             - wordpress-network
         volumes:
@@ -41,7 +41,7 @@ services:
         depends_on:
             - varnish
         image: httpd:latest
-        container_name: webserver
+        container_name: wordpress-webserver
         networks:
             - wordpress-network
         volumes:
@@ -71,7 +71,7 @@ services:
         depends_on:
             - webserver
         image: certbot/certbot:latest
-        container_name: certbot
+        container_name: wordpress-certbot
         networks:
             - wordpress-network
         volumes:
@@ -93,7 +93,7 @@ services:
             certbot:
                 condition: service_healthy
         image: phpmyadmin:latest
-        container_name: phpmyadmin
+        container_name: wordpress-phpmyadmin
         networks:
             - wordpress-network
         volumes:
@@ -135,7 +135,7 @@ services:
 
     database:
         image: ${DATABASE_IMAGE_NAME}:${DATABASE_VERSION}
-        container_name: database
+        container_name: wordpress-database
         networks:
             - wordpress-network
         volumes:
@@ -194,7 +194,7 @@ services:
             wordpress:
                 condition: service_healthy
         image: varnish:${VARNISH_VERSION}
-        container_name: varnish
+        container_name: wordpress-varnish
         networks:
             - wordpress-network
         volumes:
@@ -218,7 +218,7 @@ services:
     #            condition: service_healthy
     #    build: ./docker/3.0
     #    #image: 'damalis/vsftpd:3.0'
-    #    container_name: ftp
+    #    container_name: wordpress-ftp
     #    networks:
     #        - backend
     #    volumes:
@@ -245,7 +245,7 @@ services:
 
     backup:
         image: offen/docker-volume-backup:latest
-        container_name: backup
+        container_name: wordpress-backup
         networks:
             - wordpress-network
         volumes:
