@@ -47,7 +47,7 @@ services:
         volumes:
             - 'html:${WEBSERVER_DOC_ROOT}'
             - type: bind
-              source: ${DIRECTORY_PATH}/webserver
+              source: ${DIRECTORY_PATH}/webserver/conf
               target: '${HTTPD_PREFIX}/conf'
             - type: bind
               source: ${DIRECTORY_PATH}/webserver/ssl-option/options-ssl-apache.conf
