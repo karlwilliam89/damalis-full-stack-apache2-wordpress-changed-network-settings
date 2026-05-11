@@ -129,7 +129,7 @@ services:
             UPLOAD_LIMIT: '${PMA_UPLOAD_LIMIT}'
             MEMORY_LIMIT: '${PMA_MEMORY_LIMIT}'
             TZ: '${LOCAL_TIMEZONE}'
-        command: command: >
+        command: >
             bash -c "apt-get update && sh /tmp/packagecheck.sh 'gettext-base' && echo ${PMA_HTPASSWD_USERNAME}:phpmyadmin:$$( printf \"%s:%s:%s\" \"${PMA_HTPASSWD_USERNAME}\" \"phpmyadmin\" \"${PMA_HTPASSWD_PASSWORD}\" | md5sum | awk '{print $$1}' ) > ${PMA_CONF_FOLDER}/.htpasswd 
             && printf 'AuthType Digest\\nAuthName \"phpmyadmin\"\\nAuthDigestProvider file\\nAuthUserFile ${PMA_CONF_FOLDER}/.htpasswd\\nRequire valid-user\\n' > /var/www/html/.htaccess && a2enmod auth_digest;
             mkdir -p /var/www/html/../upload && chown www-data:www-data /var/www/html/../upload && chmod a+w /var/www/html/../upload; mkdir -p /var/www/html/../save && chown www-data:www-data /var/www/html/../save && chmod a+w /var/www/html/../save;
