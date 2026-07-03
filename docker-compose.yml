@@ -39,7 +39,7 @@ services:
 
     webserver:
         depends_on:
-            - varnish
+            - wordpress
         image: httpd:latest
         container_name: wordpress-webserver
         networks:
@@ -193,8 +193,7 @@ services:
 
     varnish:
         depends_on:
-            wordpress:
-                condition: service_healthy
+            - webserver
         image: varnish:${VARNISH_VERSION}
         container_name: wordpress-varnish
         networks:
